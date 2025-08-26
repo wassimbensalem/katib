@@ -32,6 +32,7 @@ import (
 	"github.com/kubeflow/katib/pkg/controller.v1beta1/util"
 	"github.com/kubeflow/katib/pkg/util/v1beta1/katibclient"
 	"github.com/kubeflow/katib/pkg/util/v1beta1/katibconfig"
+	"log"
 )
 
 var (
@@ -102,6 +103,13 @@ func (g *DefaultGenerator) GetRunSpecWithHyperParameters(experiment *experiments
 	// Set name and namespace for Run Spec
 	runSpec.SetName(trialName)
 	runSpec.SetNamespace(trialNamespace)
+
+	// Inject service account if specified in experiment
+	if experiment.Spec.ServiceAccountName != "" {
+		if err := g.injectServiceAccount(runSpec, experiment.Spec.ServiceAccountName); err != nil {
+			return nil, fmt.Errorf("failed to inject service account: %w", err)
+		}
+	}
 
 	return runSpec, nil
 }
@@ -223,4 +231,203 @@ func (g *DefaultGenerator) GetTrialTemplate(instance *experimentsv1beta1.Experim
 	}
 
 	return trialTemplateString, nil
+}
+
+// injectServiceAccount injects the specified service account name into the trial template.
+// It handles different types of Kubernetes resources that may contain pod templates.
+func (g *DefaultGenerator) injectServiceAccount(runSpec *unstructured.Unstructured, serviceAccountName string) error {
+	kind := runSpec.GetKind()
+	
+	switch kind {
+	case "Job":
+		return g.injectServiceAccountToJob(runSpec, serviceAccountName)
+	case "PyTorchJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "TFJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "MPIJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "MXJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "XGBoostJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "PaddleJob":
+		return g.injectServiceAccountToTrainingJob(runSpec, serviceAccountName)
+	case "Deployment":
+		return g.injectServiceAccountToDeployment(runSpec, serviceAccountName)
+	case "StatefulSet":
+		return g.injectServiceAccountToStatefulSet(runSpec, serviceAccountName)
+	case "DaemonSet":
+		return g.injectServiceAccountToDaemonSet(runSpec, serviceAccountName)
+	case "ReplicaSet":
+		return g.injectServiceAccountToReplicaSet(runSpec, serviceAccountName)
+	case "Pod":
+		return g.injectServiceAccountToPod(runSpec, serviceAccountName)
+	default:
+		// For other resource types, try to inject into pod template if it exists
+		return g.injectServiceAccountToGenericResource(runSpec, serviceAccountName)
+	}
+}
+
+// injectServiceAccountToJob injects service account into a Kubernetes Job
+func (g *DefaultGenerator) injectServiceAccountToJob(job *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(job.Object, "spec", "template", "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get job spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("job spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(job.Object, spec, "spec", "template", "spec"); err != nil {
+		return fmt.Errorf("failed to set job spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToTrainingJob injects service account into training job types (PyTorchJob, TFJob, etc.)
+func (g *DefaultGenerator) injectServiceAccountToTrainingJob(job *unstructured.Unstructured, serviceAccountName string) error {
+	// Training jobs have multiple replica types, each with their own pod template
+	replicaTypes := []string{"master", "worker", "chief", "ps", "evaluator", "launcher"}
+	
+	for _, replicaType := range replicaTypes {
+		spec, found, err := unstructured.NestedMap(job.Object, "spec", replicaType, "template", "spec")
+		if err != nil {
+			continue // Skip if this replica type doesn't exist
+		}
+		if found {
+			spec["serviceAccountName"] = serviceAccountName
+			if err := unstructured.SetNestedMap(job.Object, spec, "spec", replicaType, "template", "spec"); err != nil {
+				return fmt.Errorf("failed to set %s spec: %w", replicaType, err)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToDeployment injects service account into a Kubernetes Deployment
+func (g *DefaultGenerator) injectServiceAccountToDeployment(deployment *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(deployment.Object, "spec", "template", "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get deployment spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("deployment spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(deployment.Object, spec, "spec", "template", "spec"); err != nil {
+		return fmt.Errorf("failed to set deployment spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToStatefulSet injects service account into a Kubernetes StatefulSet
+func (g *DefaultGenerator) injectServiceAccountToStatefulSet(statefulSet *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(statefulSet.Object, "spec", "template", "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get statefulset spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("statefulset spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(statefulSet.Object, spec, "spec", "template", "spec"); err != nil {
+		return fmt.Errorf("failed to set statefulset spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToDaemonSet injects service account into a Kubernetes DaemonSet
+func (g *DefaultGenerator) injectServiceAccountToDaemonSet(daemonSet *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(daemonSet.Object, "spec", "template", "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get daemonset spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("daemonset spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(daemonSet.Object, spec, "spec", "template", "spec"); err != nil {
+		return fmt.Errorf("failed to set daemonset spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToReplicaSet injects service account into a Kubernetes ReplicaSet
+func (g *DefaultGenerator) injectServiceAccountToReplicaSet(replicaSet *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(replicaSet.Object, "spec", "template", "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get replicaset spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("replicaset spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(replicaSet.Object, spec, "spec", "template", "spec"); err != nil {
+		return fmt.Errorf("failed to set replicaset spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToPod injects service account into a Kubernetes Pod
+func (g *DefaultGenerator) injectServiceAccountToPod(pod *unstructured.Unstructured, serviceAccountName string) error {
+	spec, found, err := unstructured.NestedMap(pod.Object, "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get pod spec: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("pod spec not found")
+	}
+	
+	spec["serviceAccountName"] = serviceAccountName
+	
+	if err := unstructured.SetNestedMap(pod.Object, spec, "spec"); err != nil {
+		return fmt.Errorf("failed to set pod spec: %w", err)
+	}
+	
+	return nil
+}
+
+// injectServiceAccountToGenericResource attempts to inject service account into any resource that might have a pod template
+func (g *DefaultGenerator) injectServiceAccountToGenericResource(resource *unstructured.Unstructured, serviceAccountName string) error {
+	// Try to find pod template in common locations
+	podTemplatePaths := [][]string{
+		{"spec", "template", "spec"},
+		{"spec", "jobTemplate", "spec", "template", "spec"},
+		{"spec", "workflowTemplate", "spec", "template", "spec"},
+	}
+	
+	for _, path := range podTemplatePaths {
+		spec, found, err := unstructured.NestedMap(resource.Object, path...)
+		if err != nil {
+			continue
+		}
+		if found {
+			spec["serviceAccountName"] = serviceAccountName
+			if err := unstructured.SetNestedMap(resource.Object, spec, path...); err != nil {
+				continue // Try next path
+			}
+			return nil // Successfully injected
+		}
+	}
+	
+	// If no pod template found, log a warning but don't fail
+	log.Printf("Warning: Could not inject service account into resource of kind %s", resource.GetKind())
+	return nil
 }

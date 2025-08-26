@@ -104,6 +104,7 @@ class KatibClient(object):
         self,
         experiment: models.V1beta1Experiment,
         namespace: Optional[str] = None,
+        service_account: Optional[str] = None,
     ):
         """Create the Katib Experiment.
 
@@ -131,6 +132,13 @@ class KatibClient(object):
 
         if experiment_name is None:
             raise ValueError("Experiment must have a name or generateName")
+
+        # Inject service account if specified
+        if service_account is not None:
+            if hasattr(experiment, 'spec') and experiment.spec is not None:
+                experiment.spec.service_account_name = service_account
+            elif isinstance(experiment, dict) and 'spec' in experiment:
+                experiment['spec']['serviceAccountName'] = service_account
 
         try:
             outputs = self.custom_api.create_namespaced_custom_object(
@@ -216,6 +224,7 @@ class KatibClient(object):
         packages_to_install: List[str] = None,
         pip_index_url: str = "https://pypi.org/simple",
         metrics_collector_config: Dict[str, Any] = {"kind": "StdOut"},
+        service_account: Optional[str] = None,
     ):
         """
         Create HyperParameter Tuning Katib Experiment using one of the following
@@ -701,6 +710,10 @@ class KatibClient(object):
 
         # Add Trial template to the Katib Experiment.
         experiment.spec.trial_template = trial_template
+
+        # Add service account if specified
+        if service_account is not None:
+            experiment.spec.service_account_name = service_account
 
         # Create the Katib Experiment.
         self.create_experiment(experiment, namespace)

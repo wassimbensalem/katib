@@ -43,7 +43,8 @@ class V1beta1ExperimentSpec(object):
         'parallel_trial_count': 'int',
         'parameters': 'list[V1beta1ParameterSpec]',
         'resume_policy': 'str',
-        'trial_template': 'V1beta1TrialTemplate'
+        'trial_template': 'V1beta1TrialTemplate',
+        'service_account_name': 'str'
     }
 
     attribute_map = {
@@ -57,10 +58,11 @@ class V1beta1ExperimentSpec(object):
         'parallel_trial_count': 'parallelTrialCount',
         'parameters': 'parameters',
         'resume_policy': 'resumePolicy',
-        'trial_template': 'trialTemplate'
+        'trial_template': 'trialTemplate',
+        'service_account_name': 'serviceAccountName'
     }
 
-    def __init__(self, algorithm=None, early_stopping=None, max_failed_trial_count=None, max_trial_count=None, metrics_collector_spec=None, nas_config=None, objective=None, parallel_trial_count=None, parameters=None, resume_policy=None, trial_template=None, local_vars_configuration=None):  # noqa: E501
+    def __init__(self, algorithm=None, early_stopping=None, max_failed_trial_count=None, max_trial_count=None, metrics_collector_spec=None, nas_config=None, objective=None, parallel_trial_count=None, parameters=None, resume_policy=None, trial_template=None, service_account_name=None, local_vars_configuration=None):  # noqa: E501
         """V1beta1ExperimentSpec - a model defined in OpenAPI"""  # noqa: E501
         if local_vars_configuration is None:
             local_vars_configuration = Configuration()
@@ -77,6 +79,7 @@ class V1beta1ExperimentSpec(object):
         self._parameters = None
         self._resume_policy = None
         self._trial_template = None
+        self._service_account_name = None
         self.discriminator = None
 
         if algorithm is not None:
@@ -101,6 +104,8 @@ class V1beta1ExperimentSpec(object):
             self.resume_policy = resume_policy
         if trial_template is not None:
             self.trial_template = trial_template
+        if service_account_name is not None:
+            self.service_account_name = service_account_name
 
     @property
     def algorithm(self):
@@ -342,6 +347,27 @@ class V1beta1ExperimentSpec(object):
         """
 
         self._trial_template = trial_template
+
+    @property
+    def service_account_name(self):
+        """Gets the service_account_name of this V1beta1ExperimentSpec.  # noqa: E501
+
+
+        :return: The service_account_name of this V1beta1ExperimentSpec.  # noqa: E501
+        :rtype: str
+        """
+        return self._service_account_name
+
+    @service_account_name.setter
+    def service_account_name(self, service_account_name):
+        """Sets the service_account_name of this V1beta1ExperimentSpec.
+
+
+        :param service_account_name: The service_account_name of this V1beta1ExperimentSpec.  # noqa: E501
+        :type: str
+        """
+
+        self._service_account_name = service_account_name
 
     def to_dict(self):
         """Returns the model properties as a dict"""

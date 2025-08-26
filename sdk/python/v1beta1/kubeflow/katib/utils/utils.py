@@ -99,20 +99,137 @@ def validate_metrics_value(value: Any):
 def validate_objective_function(objective: Callable):
     # Check if objective function is callable.
     if not callable(objective):
+        raise ValueError("Objective function must be callable.")
+
+    # Check if objective function has only one parameter.
+    sig = inspect.signature(objective)
+    if len(sig.parameters) != 1:
         raise ValueError(
-            f"Objective function must be callable, got function type: {type(objective)}"
+            "Objective function must have exactly one parameter. "
+            "The parameter should be a dictionary containing hyperparameters."
         )
 
-    # Verify the objective function arguments.
-    objective_signature = inspect.signature(objective)
-    try:
-        objective_signature.bind({})
-    except Exception:
-        raise ValueError(
-            "Invalid args in the Objective function. "
-            "The function args must have only 'parameters' dictionary. "
-            f"Current Objective arguments: {objective_signature}"
+
+def inject_service_account_to_trial_template(
+    trial_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """
+    Inject service account into trial template for different Kubernetes resource types.
+    
+    Args:
+        trial_template: The trial template dictionary
+        service_account: The service account name to inject
+        
+    Returns:
+        Modified trial template with service account injected
+    """
+    if not trial_template or not service_account:
+        return trial_template
+    
+    # Handle different resource types
+    kind = trial_template.get('kind', '')
+    
+    if kind == 'Job':
+        return _inject_service_account_to_job(trial_template, service_account)
+    elif kind in ['PyTorchJob', 'TFJob', 'MPIJob', 'MXJob', 'XGBoostJob', 'PaddleJob']:
+        return _inject_service_account_to_training_job(
+            trial_template, service_account
         )
+    elif kind in ['Deployment', 'StatefulSet', 'DaemonSet', 'ReplicaSet']:
+        return _inject_service_account_to_workload(
+            trial_template, service_account
+        )
+    elif kind == 'Pod':
+        return _inject_service_account_to_pod(trial_template, service_account)
+    else:
+        # Try generic injection for other resource types
+        return _inject_service_account_to_generic(
+            trial_template, service_account
+        )
+
+
+def _inject_service_account_to_job(
+    job_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """Inject service account into Job template."""
+    if 'spec' in job_template and 'template' in job_template['spec']:
+        if 'spec' not in job_template['spec']['template']:
+            job_template['spec']['template']['spec'] = {}
+        job_template['spec']['template']['spec']['serviceAccountName'] = service_account
+    return job_template
+
+
+def _inject_service_account_to_training_job(
+    job_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """Inject service account into training job templates (PyTorchJob, TFJob, etc.)."""
+    if 'spec' not in job_template:
+        return job_template
+    
+    # Training jobs have multiple replica types
+    replica_types = ['master', 'worker', 'chief', 'ps', 'evaluator', 'launcher']
+    
+    for replica_type in replica_types:
+        if replica_type in job_template['spec']:
+            if 'template' in job_template['spec'][replica_type]:
+                if 'spec' not in job_template['spec'][replica_type]['template']:
+                    job_template['spec'][replica_type]['template']['spec'] = {}
+                job_template['spec'][replica_type]['template']['spec']['serviceAccountName'] = service_account
+    
+    return job_template
+
+
+def _inject_service_account_to_workload(
+    workload_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """Inject service account into workload templates (Deployment, StatefulSet, etc.)."""
+    if 'spec' in workload_template and 'template' in workload_template['spec']:
+        if 'spec' not in workload_template['spec']['template']:
+            workload_template['spec']['template']['spec'] = {}
+        workload_template['spec']['template']['spec']['serviceAccountName'] = service_account
+    return workload_template
+
+
+def _inject_service_account_to_pod(
+    pod_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """Inject service account into Pod template."""
+    if 'spec' not in pod_template:
+        pod_template['spec'] = {}
+    pod_template['spec']['serviceAccountName'] = service_account
+    return pod_template
+
+
+def _inject_service_account_to_generic(
+    resource_template: Dict[str, Any], service_account: str
+) -> Dict[str, Any]:
+    """Attempt to inject service account into generic resources with pod templates."""
+    # Try common pod template paths
+    pod_template_paths = [
+        ['spec', 'template', 'spec'],
+        ['spec', 'jobTemplate', 'spec', 'template', 'spec'],
+        ['spec', 'workflowTemplate', 'spec', 'template', 'spec'],
+    ]
+    
+    for path in pod_template_paths:
+        current = resource_template
+        for i, key in enumerate(path[:-1]):
+            if key not in current:
+                break
+            current = current[key]
+        else:
+            # We found a valid path, inject the service account
+            if path[-1] not in current:
+                current[path[-1]] = {}
+            current[path[-1]]['serviceAccountName'] = service_account
+            return resource_template
+    
+    # If no pod template found, log a warning but don't fail
+    logger.warning(
+        f"Could not inject service account into resource of kind "
+        f"{resource_template.get('kind', 'Unknown')}"
+    )
+    return resource_template
 
 
 def get_script_for_python_packages(packages_to_install, pip_index_url):

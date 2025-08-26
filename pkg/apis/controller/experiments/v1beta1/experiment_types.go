@@ -60,6 +60,11 @@ type ExperimentSpec struct {
 	// Describes resuming policy which usually take effect after experiment terminated.
 	// Default value is Never.
 	ResumePolicy ResumePolicyType `json:"resumePolicy,omitempty"`
+
+	// ServiceAccountName specifies the name of the Kubernetes service account to use for trial pods.
+	// If not specified, the default service account for the namespace will be used.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 // ExperimentStatus is the current status of an Experiment.

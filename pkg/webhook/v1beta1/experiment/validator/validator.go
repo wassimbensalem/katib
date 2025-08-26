@@ -17,6 +17,7 @@ limitations under the License.
 package validator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -26,9 +27,12 @@ import (
 
 	jsonPatch "github.com/mattbaird/jsonpatch"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -157,6 +161,13 @@ func (g *DefaultValidator) ValidateExperiment(instance, oldInst *experimentsv1be
 
 	if err := g.validateTrialTemplate(instance); err != nil {
 		allErrs = append(allErrs, err...)
+	}
+
+	// Validate service account if specified
+	if instance.Spec.ServiceAccountName != "" {
+		if err := g.validateServiceAccount(instance); err != nil {
+			allErrs = append(allErrs, err...)
+		}
 	}
 
 	if len(instance.Spec.Parameters) == 0 && instance.Spec.NasConfig == nil {
@@ -568,6 +579,23 @@ func (g *DefaultValidator) validateMetricsCollector(inst *experimentsv1beta1.Exp
 				}
 			}
 		}
+	}
+
+	return allErrs
+}
+
+func (g *DefaultValidator) validateServiceAccount(instance *experimentsv1beta1.Experiment) field.ErrorList {
+	var allErrs field.ErrorList
+
+	if instance.Spec.ServiceAccountName == "" {
+		return allErrs
+	}
+
+	// Check if the service account exists in the same namespace
+	serviceAccount := &corev1.ServiceAccount{}
+	if err := g.GetClient().Get(context.Background(), types.NamespacedName{Name: instance.Spec.ServiceAccountName, Namespace: instance.Namespace}, serviceAccount); err != nil {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("serviceAccountName"), instance.Spec.ServiceAccountName,
+			fmt.Sprintf("serviceAccount %s not found in namespace %s: %v", instance.Spec.ServiceAccountName, instance.Namespace, err)))
 	}
 
 	return allErrs
